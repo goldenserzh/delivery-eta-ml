@@ -3,10 +3,11 @@ from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
 from typing import Optional
 import pandas as pd
+from loguru import logger
 
 from model.learnig_model import HyperParamOptimizer, LearningModel
 from model.predictModel import  PredictModel
-
+from catboost import CatBoostRegressor
 
 app = FastAPI()
 
@@ -49,3 +50,43 @@ class OrderFeatures(BaseModel):
     vehicle_type: str = Field(..., description="Тип транспорта курьера")
     restaurant_city: str = Field(..., description="Город ресторана")
     cuisine_type: str = Field(..., description="Тип кухни")
+
+class Prediction(BaseModel):
+    minutes: int
+
+
+logger.info("Загрузка модели")
+
+MODEL_PATH = os.path.join(os.getcwd(), "model")
+MODEL = PredictModel._load_model(MODEL_PATH)
+
+logger.info("Модель успешно зпгружена")
+
+@app.get('/')
+def checkStatus():
+    return {'status': 'ok'}
+
+
+@app.post("/prediction", response_model=Prediction)
+def makePrediction(features: OrderFeatures):
+    try:
+        df = pd.DataFrame([features.model_dump()])
+        prediction = MODEL.predict(df)
+        logger.info("Модель дала прогноз")
+
+    except Exception as e:
+        logger.error("Не удалось подключиться")
+        raise HTTPException(status_code=500, detail="Не удалось получить прогноз")
+
+    return Prediction(**prediction)
+
+
+@app.get("/data", response_model=OrderFeatures)
+def getTempData():
+    df = pd.DataFrame([OrderFeatures.model_dump()])
+    return OrderFeatures(**df)
+
+
+
+
+
